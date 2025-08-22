@@ -72,9 +72,8 @@ st.sidebar.header("Paramètres du trajet")
 
 st.sidebar.divider()
 
-col_passenger, col_date, col_time = st.sidebar.columns(3)
-with col_passenger:
-    passenger_count = st.number_input("Passagers", min_value=1, max_value=8, value=1, step=1)
+passenger_count = st.number_input("Passagers", min_value=1, max_value=8, value=1, step=1)
+col_date, col_time = st.sidebar.columns(2)
 with col_date:
     pickup_date = st.date_input( "Date", datetime.date(2013, 7, 6))
 with col_time:
