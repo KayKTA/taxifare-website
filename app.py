@@ -2,15 +2,42 @@ import streamlit as st
 import datetime
 import numpy as np
 import pandas as pd
-import folium
-from streamlit_folium import st_folium
 import requests
-
-'''
-# TaxiFareModel front
-'''
+import folium
+import math
+from streamlit_folium import st_folium
 
 url = 'https://taxifare-314678532696.europe-west1.run.app'
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    dlat = math.radians(lat2-lat1)
+    dlon = math.radians(lon2-lon1)
+    a = (math.sin(dlat/2)**2
+         + math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(dlon/2)**2)
+    return R * (2*math.atan2(math.sqrt(a), math.sqrt(1-a)))
+
+def build_map(pickup, dropoff):
+    if pickup and dropoff:
+        center = ((pickup[0]+dropoff[0])/2, (pickup[1]+dropoff[1])/2)
+        zoom = 12
+    elif pickup:
+        center, zoom = (pickup[0], pickup[1]), 13
+    elif dropoff:
+        center, zoom = (dropoff[0], dropoff[1]), 13
+    else:
+        center, zoom = (40.7128, -74.0060), 18
+
+    m = folium.Map(location=center, zoom_start=zoom, control_scale=True, tiles="cartodbpositron")
+
+    if pickup:
+        folium.Marker(pickup, icon=folium.Icon(color="green", icon="play", prefix="fa"), tooltip="Start").add_to(m)
+    if dropoff:
+        folium.Marker(dropoff, icon=folium.Icon(color="red", icon="flag", prefix="fa"), tooltip="End").add_to(m)
+    if pickup and dropoff:
+        folium.PolyLine([pickup, dropoff], weight=4, opacity=0.7).add_to(m)
+
+    return m
 
 def predict_price():
 
@@ -31,31 +58,71 @@ def predict_price():
     #         passenger_count={data['passenger_count']}"
 
     response = requests.get(f"{url}/predict", params=data)
-    print(response.json())
+    if response.ok :
+        return True, response.json()
+    else :
+        return False, f"{response.status_code}: {response.json()} "
 
 
-# col1, col2 = st.columns(2)
-# with col1:
-subcol1, subcol2 = st.columns(2)
+st.set_page_config(page_title="TaxiFare", page_icon="🚕", layout="wide")
+st.title("🚕 TaxiFare")
+st.caption("Planifie ton trajet")
+
+st.sidebar.header("Paramètres du trajet")
+
+st.sidebar.divider()
+
+col_passenger, col_date, col_time = st.sidebar.columns(3)
+with col_passenger:
+    passenger_count = st.number_input("Passagers", min_value=1, max_value=8, value=1, step=1)
+with col_date:
+    pickup_date = st.date_input( "Date", datetime.date(2013, 7, 6))
+with col_time:
+    pickup_time = st.time_input( "Heure", datetime.time(8, 0, 0))
+
+st.sidebar.subheader("Départ")
+col_lat1, col_lon1 = st.sidebar.columns(2)
+with col_lat1:
+    pickup_latitude = st.number_input("Latitude Départ", value=-73.950655, format="%.6f")
+with col_lon1:
+    pickup_longitude = st.number_input("Longitude Départ", value=40.783282, format="%.6f")
+
+st.sidebar.subheader("Arrivée")
+col_lat2, col_lon2 = st.sidebar.columns(2)
+with col_lat2:
+    dropoff_latitude = st.number_input("Latitude Arrivée", value=-73.984365, format="%.6f")
+with col_lon2:
+    dropoff_longitude = st.number_input("Longitude Arrivée", value=40.769802, format="%.6f")
+
+st.sidebar.divider()
 
 
-with subcol1:
-    pickup_date = st.date_input( "Enter pickup date", datetime.date(2013, 7, 6))
-    pickup_longitude = st.number_input('Enter pickup longitude', -73.950655)
-    pickup_latitude = st.number_input('Enter pickup latitude', 40.783282)
-    passenger_count = st.number_input('Enter the number of passenger', 1, 8, step=1)
+m = build_map([pickup_longitude, pickup_latitude], [dropoff_longitude, dropoff_latitude])
 
-with subcol2:
-    pickup_time = st.time_input( "Enter pickup time", datetime.time(8, 0, 0))
-    dropoff_longitude = st.number_input('Enter dropoff longitude', -73.984365)
-    dropoff_latitude = st.number_input('Enter dropoff latitude', 40.769802)
-    if st.button('predict'):
-        predict_price()
+map_data = st_folium(m, width=None, height=400, key="map")
 
-m = folium.Map(location=[pickup_longitude, pickup_latitude], zoom_start=16)
-folium.Marker(
-    [pickup_longitude, pickup_latitude], popup="Liberty Bell", tooltip="Liberty Bell"
-).add_to(m)
+# Infos trajets
+st.divider()
+c1, c2, c3 = st.columns([2, 2, 1])
+with c1:
+    st.metric("Départ", f"{(pickup_latitude, pickup_longitude)}" if (pickup_latitude, pickup_longitude) else "—")
+with c2:
+    st.metric("Arrivée", f"{(dropoff_latitude, dropoff_longitude)}" if (dropoff_latitude, dropoff_longitude) else "—")
+with c3:
+    if (pickup_latitude, pickup_longitude) and (dropoff_latitude, dropoff_longitude):
+        d = haversine(*(pickup_latitude, pickup_longitude), *(dropoff_latitude, dropoff_longitude))
+        st.metric("Distance", f"{d:.2f} km")
+    else:
+        st.metric("Distance", "—")
 
-# call to render Folium map in Streamlit
-st_data = st_folium(m, width=725)
+
+
+disabled = not (pickup_longitude and pickup_latitude and dropoff_longitude and dropoff_latitude  )
+st.sidebar.header("Calculer le Prix")
+if st.sidebar.button("Estimer le prix de la course", type="secondary", disabled=disabled, use_container_width=True):
+        ok, resp = predict_price()
+        if ok:
+            fare = resp.get("fare")
+            st.success(f"Prix Estimé : **{fare:.2f} $**")
+        else:
+            st.error(resp)

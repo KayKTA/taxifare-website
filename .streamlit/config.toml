@@ -1,3 +1,7 @@
 [theme]
-base="dark"
-primaryColor="#efbc44"
+base="light"
+primaryColor="forestGreen"
+
+[theme.sidebar]
+backgroundColor="forestGreen"
+secondaryBackgroundColor="#36ab2d"
